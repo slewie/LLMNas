@@ -1,5 +1,6 @@
 from data_loader.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom
-from models.model import Informer
+from models.model import Informer, InformerStack
+from models.lstm import LSTM
 
 from utils.tools import EarlyStopping, adjust_learning_rate
 from utils.metrics import metric
@@ -38,6 +39,8 @@ class Exp_Informer(object):
     def _build_model(self):
         model_dict = {
             "informer": Informer,
+            "informerstack": InformerStack,
+            "lstm": LSTM,
         }
         if self.args.model == "informer" or self.args.model == "informerstack":
             e_layers = (
@@ -56,6 +59,30 @@ class Exp_Informer(object):
                 self.args.d_model,
                 self.args.n_heads,
                 e_layers,  # self.args.e_layers,
+                self.args.d_layers,
+                self.args.d_ff,
+                self.args.dropout,
+                self.args.attn,
+                self.args.embed,
+                self.args.freq,
+                self.args.activation,
+                self.args.output_attention,
+                self.args.distil,
+                self.args.mix,
+                self.device,
+            )
+        elif self.args.model == "lstm":
+            model = model_dict[self.args.model](
+                self.args.enc_in,
+                self.args.dec_in,
+                self.args.c_out,
+                self.args.seq_len,
+                self.args.label_len,
+                self.args.pred_len,
+                self.args.factor,
+                self.args.d_model,
+                self.args.n_heads,
+                self.args.e_layers,
                 self.args.d_layers,
                 self.args.d_ff,
                 self.args.dropout,

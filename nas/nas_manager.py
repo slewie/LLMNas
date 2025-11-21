@@ -26,7 +26,11 @@ class NASManager:
         self.response_schemas = [
             ResponseSchema(
                 name="reasoning",
-                description="Brief reasoning what parameters are better to choose based on history.",
+                description="Brief reasoning what parameters and architecture are better to choose based on history.",
+            ),
+            ResponseSchema(
+                name="model_type",
+                description="Type of model architecture: 'informer', 'informerstack', or 'lstm'",
             ),
             ResponseSchema(
                 name="d_model", description="Dimension of model (e.g. 256, 512, 1024)"
@@ -57,18 +61,24 @@ class NASManager:
         self.format_instructions = self.output_parser.get_format_instructions()
 
     def _get_prompt_template(self) -> ChatPromptTemplate:
-        template_string = """You are an expert in Neural Architecture Search (NAS) for Time Series Forecasting using the Informer model.
-        Your goal is to find the best architecture hyperparameters to minimize the Mean Squared Error (MSE) on the validation/test set.
+        template_string = """You are an expert in Neural Architecture Search (NAS) for Time Series Forecasting.
+        Your goal is to find the best model architecture and hyperparameters to minimize the Mean Squared Error (MSE) on the validation/test set.
+        
+        You can choose between different model architectures:
+        1. 'informer' - Transformer-based model with ProbSparse attention (good for long sequences)
+        2. 'informerstack' - Stacked version of Informer (more complex, potentially better accuracy)
+        3. 'lstm' - Simple LSTM model (faster training, good baseline)
         
         Here is the history of tried architectures and their resulting MSE (lower is better):
         {history}
         
-        Based on this history, suggest a new set of hyperparameters that might yield a better (lower) MSE.
-        Explore the search space intelligently. 
+        Based on this history, suggest a new architecture type and hyperparameters that might yield a better (lower) MSE.
+        Explore the search space intelligently. Try different architectures to see which works best.
         
         Constraints:
+        - model_type: ['informer', 'informerstack', 'lstm']
         - d_model: [128, 256, 512, 768]
-        - n_heads: [4, 8, 16] (must divide d_model)
+        - n_heads: [4, 8, 16] (must divide d_model, mainly for informer/informerstack)
         - e_layers: [1, 2, 3, 4, 5]
         - d_layers: [1, 2, 3]
         - d_ff: [512, 1024, 2048]
@@ -86,7 +96,7 @@ class NASManager:
         history_str = "No history yet."
         if self.history:
             history_str = "\n".join(
-                [f"Arch: {h['arch']}, MSE: {h['metric']}" for h in self.history]
+                [f"Arch: {h['arch']}, MSE: {float(h['metric'])}" for h in self.history]
             )
 
         messages = prompt.format_messages(
@@ -121,6 +131,12 @@ class NASManager:
             current_args = copy_args(base_args)
 
             try:
+                model_type = suggested_params.get("model_type", "informer").lower()
+                if model_type not in ["informer", "informerstack", "lstm"]:  # TODO: заменить на одну общую переменную
+                    logger.warning(f"Неизвестный тип модели: {model_type}. Используем informer.")
+                    model_type = "informer"
+                current_args.model = model_type
+
                 current_args.d_model = int(suggested_params["d_model"])
                 current_args.n_heads = int(suggested_params["n_heads"])
 

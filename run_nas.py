@@ -93,7 +93,7 @@ def run_nas(args=None, **kwargs):
 
     results = {
         "best_arch": best_arch,
-        "best_mse": best_mse,
+        "best_mse": float(best_mse),
         "history": nas_manager.history,
     }
 
