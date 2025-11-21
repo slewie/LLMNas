@@ -1,6 +1,7 @@
 import copy
 from typing import Dict, Any
 
+import torch
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import ResponseSchema, StructuredOutputParser
@@ -122,6 +123,13 @@ class NASManager:
             try:
                 current_args.d_model = int(suggested_params["d_model"])
                 current_args.n_heads = int(suggested_params["n_heads"])
+
+                if current_args.d_model % current_args.n_heads != 0:
+                    logger.warning(
+                        f"d_model ({current_args.d_model}) не делится на n_heads ({current_args.n_heads}). Пропускаем."
+                    )
+                    continue
+
                 current_args.e_layers = int(suggested_params["e_layers"])
                 current_args.d_layers = int(suggested_params["d_layers"])
                 current_args.d_ff = int(suggested_params["d_ff"])
@@ -151,6 +159,9 @@ class NASManager:
                     best_metric = mse
                     best_arch = suggested_params
                     logger.info(f"Обновляем лучшийMSE: {best_metric}")
+
+                del exp
+                torch.cuda.empty_cache()
 
             except Exception as e:
                 logger.error(f"Ошибка эксперимента: {e}")

@@ -100,6 +100,9 @@ def run_optuna(args=None, **kwargs):
             vali_data, vali_loader = exp._get_data(flag="val")
             criterion = exp._select_criterion()
             mse = exp.vali(vali_data, vali_loader, criterion)
+            
+            del exp
+            torch.cuda.empty_cache()
 
             return mse
         except Exception as e:
