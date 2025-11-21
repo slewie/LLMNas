@@ -1,7 +1,10 @@
 import copy
 import datetime
+import json
+import random
 
 import torch
+import numpy as np
 import optuna
 
 from utils.logger import logger
@@ -15,6 +18,11 @@ if "n_trials" not in existing_args:
         "--n_trials", type=int, default=20, help="Количество итераций Optuna"
     )
 
+if "seed" not in existing_args:
+    main_parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed для воспроизводимости"
+    )
+
 for action in main_parser._actions:
     if action.dest in ["model", "data"] and action.required:
         action.required = False
@@ -22,6 +30,18 @@ for action in main_parser._actions:
 
 def copy_args(args):
     return copy.deepcopy(args)
+
+
+def set_seed(seed):
+    """Фиксация seed для воспроизводимости"""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 
 def run_optuna(args=None, **kwargs):
@@ -35,6 +55,9 @@ def run_optuna(args=None, **kwargs):
 
     for k, v in kwargs.items():
         setattr(args, k, v)
+
+    set_seed(args.seed)
+    logger.info(f"Random seed установлен: {args.seed}")
 
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
     if args.use_gpu and args.use_multi_gpu:
@@ -109,7 +132,7 @@ def run_optuna(args=None, **kwargs):
             logger.error(f"Ошибка: {e}")
             return float("inf")
 
-    study = optuna.create_study(direction="minimize")
+    study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=args.seed))
     study.optimize(objective, n_trials=args.n_trials)
 
     logger.info("\n=== Оптимизация через Optuna завершена ===")
@@ -121,10 +144,27 @@ def run_optuna(args=None, **kwargs):
         logger.info(f"    {key}: {value}")
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    results_file = f"optuna_results_{timestamp}.csv"
+    results_file = f"optuna_results_{timestamp}.json"
 
-    df = study.trials_dataframe()
-    df.to_csv(results_file, index=False)
+    history = []
+    for t in study.trials:
+        history.append({
+            "trial_number": t.number,
+            "arch": t.params,
+            "metric": float(t.value) if t.value is not None else None,
+            "state": str(t.state)
+        })
+
+    results = {
+        "best_arch": trial.params,
+        "best_mse": float(trial.value),
+        "history": history,
+    }
+
+    with open(results_file, "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=4, ensure_ascii=False)
+
+    logger.info(f"Результаты сохранены в {results_file}")
 
     return trial.params, trial.value
 
