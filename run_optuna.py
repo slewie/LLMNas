@@ -123,7 +123,7 @@ def run_optuna(args=None, **kwargs):
             vali_data, vali_loader = exp._get_data(flag="val")
             criterion = exp._select_criterion()
             mse = exp.vali(vali_data, vali_loader, criterion)
-            
+
             del exp
             torch.cuda.empty_cache()
 
@@ -132,7 +132,9 @@ def run_optuna(args=None, **kwargs):
             logger.error(f"Ошибка: {e}")
             return float("inf")
 
-    study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=args.seed))
+    study = optuna.create_study(
+        direction="minimize", sampler=optuna.samplers.TPESampler(seed=args.seed)
+    )
     study.optimize(objective, n_trials=args.n_trials)
 
     logger.info("\n=== Оптимизация через Optuna завершена ===")
@@ -148,12 +150,14 @@ def run_optuna(args=None, **kwargs):
 
     history = []
     for t in study.trials:
-        history.append({
-            "trial_number": t.number,
-            "arch": t.params,
-            "metric": float(t.value) if t.value is not None else None,
-            "state": str(t.state)
-        })
+        history.append(
+            {
+                "trial_number": t.number,
+                "arch": t.params,
+                "metric": float(t.value) if t.value is not None else None,
+                "state": str(t.state),
+            }
+        )
 
     results = {
         "best_arch": trial.params,

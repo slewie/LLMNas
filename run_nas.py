@@ -43,6 +43,15 @@ if "seed" not in existing_args:
         "--seed", type=int, default=42, help="Random seed для воспроизводимости"
     )
 
+if "prompt_type" not in existing_args:
+    main_parser.add_argument(
+        "--prompt_type",
+        type=str,
+        default="standard",
+        choices=["standard", "ett"],
+        help="Тип промпта для NAS: 'standard' или 'ett'"
+    )
+
 for action in main_parser._actions:
     if action.dest in ["model", "data"] and action.required:
         action.required = False
@@ -116,7 +125,8 @@ def run_nas(args=None, **kwargs):
 
     nas_manager = NASManager(
         api_key=args.api_key, 
-        model_name=args.model_name
+        model_name=args.model_name,
+        prompt_type=args.prompt_type
     )
 
     best_arch, best_mse = nas_manager.run_search(args, iterations=args.nas_iter)
