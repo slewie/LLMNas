@@ -4,10 +4,11 @@ from typing import Dict, Any
 import torch
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
-from langchain.output_parsers import ResponseSchema, StructuredOutputParser
+from langchain.output_parsers import StructuredOutputParser
 
 from utils.logger import logger
 from exp.exp_informer import Exp_Informer
+from nas.prompts import StandardNASPrompt, ETTNASPrompt
 
 
 class NASManager:
@@ -16,6 +17,7 @@ class NASManager:
         api_key: str,
         base_url: str = "https://openrouter.ai/api/v1",
         model_name: str = "google/gemini-2.5-flash-lite",
+        prompt_type: str = "standard",
     ):
         self.llm = ChatOpenAI(
             api_key=api_key, base_url=base_url, model=model_name, temperature=0.7
@@ -23,72 +25,19 @@ class NASManager:
 
         self.history = []  # Храним истории архитектур и их метрик
 
-        self.response_schemas = [
-            ResponseSchema(
-                name="reasoning",
-                description="Brief reasoning what parameters and architecture are better to choose based on history.",
-            ),
-            ResponseSchema(
-                name="model_type",
-                description="Type of model architecture: 'informer', 'informerstack', or 'lstm'",
-            ),
-            ResponseSchema(
-                name="d_model", description="Dimension of model (e.g. 256, 512, 1024)"
-            ),
-            ResponseSchema(
-                name="n_heads", description="Number of heads (e.g. 4, 8, 16)"
-            ),
-            ResponseSchema(
-                name="e_layers",
-                description="Number of encoder layers (e.g. 1, 2, 3, 4)",
-            ),
-            ResponseSchema(
-                name="d_layers", description="Number of decoder layers (e.g. 1, 2, 3)"
-            ),
-            ResponseSchema(
-                name="d_ff", description="Dimension of fcn (e.g. 1024, 2048)"
-            ),
-            ResponseSchema(
-                name="factor", description="Probsparse attn factor (e.g. 3, 5)"
-            ),
-            ResponseSchema(
-                name="learning_rate", description="Learning rate (e.g. 0.0001, 0.001)"
-            ),
-        ]
+        if prompt_type == "ett":
+            self.prompt_strategy = ETTNASPrompt()
+        else:
+            self.prompt_strategy = StandardNASPrompt()
+
+        self.response_schemas = self.prompt_strategy.get_response_schemas()
         self.output_parser = StructuredOutputParser.from_response_schemas(
             self.response_schemas
         )
         self.format_instructions = self.output_parser.get_format_instructions()
 
     def _get_prompt_template(self) -> ChatPromptTemplate:
-        template_string = """You are an expert in Neural Architecture Search (NAS) for Time Series Forecasting.
-        Your goal is to find the best model architecture and hyperparameters to minimize the Mean Squared Error (MSE) on the validation/test set.
-        
-        You can choose between different model architectures:
-        1. 'informer' - Transformer-based model with ProbSparse attention (good for long sequences)
-        2. 'informerstack' - Stacked version of Informer (more complex, potentially better accuracy)
-        3. 'lstm' - Simple LSTM model (faster training, good baseline)
-        
-        Here is the history of tried architectures and their resulting MSE (lower is better):
-        {history}
-        
-        Based on this history, suggest a new architecture type and hyperparameters that might yield a better (lower) MSE.
-        Explore the search space intelligently. Try different architectures to see which works best.
-        
-        Constraints:
-        - model_type: ['informer', 'informerstack', 'lstm']
-        - d_model: [128, 256, 512, 768]
-        - n_heads: [4, 8, 16] (must divide d_model, mainly for informer/informerstack)
-        - e_layers: [1, 2, 3, 4, 5]
-        - d_layers: [1, 2, 3]
-        - d_ff: [512, 1024, 2048]
-        - factor: [3, 5]
-        - learning_rate: [1e-5, 1e-4, 1e-3]
-        
-        {format_instructions}
-        """
-
-        return ChatPromptTemplate.from_template(template_string)
+        return self.prompt_strategy.get_prompt_template()
 
     def suggest_architecture(self) -> Dict[str, Any]:
         prompt = self._get_prompt_template()
@@ -132,8 +81,14 @@ class NASManager:
 
             try:
                 model_type = suggested_params.get("model_type", "informer").lower()
-                if model_type not in ["informer", "informerstack", "lstm"]:  # TODO: заменить на одну общую переменную
-                    logger.warning(f"Неизвестный тип модели: {model_type}. Используем informer.")
+                if model_type not in [
+                    "informer",
+                    "informerstack",
+                    "lstm",
+                ]:  # TODO: заменить на одну общую переменную
+                    logger.warning(
+                        f"Неизвестный тип модели: {model_type}. Используем informer."
+                    )
                     model_type = "informer"
                 current_args.model = model_type
 
