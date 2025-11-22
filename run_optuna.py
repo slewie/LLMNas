@@ -96,6 +96,11 @@ def run_optuna(args=None, **kwargs):
         current_args = copy_args(args)
 
         # Search space
+        model_type = trial.suggest_categorical(
+            "model", ["informer", "informerstack", "lstm"]
+        )
+        current_args.model = model_type
+
         d_model = trial.suggest_categorical("d_model", [128, 256, 512, 768])
 
         n_heads = trial.suggest_categorical("n_heads", [4, 8, 16])
@@ -133,7 +138,10 @@ def run_optuna(args=None, **kwargs):
             return float("inf")
 
     study = optuna.create_study(
-        direction="minimize", sampler=optuna.samplers.TPESampler(seed=args.seed)
+        direction="minimize",
+        sampler=optuna.samplers.TPESampler(
+            seed=args.seed, n_startup_trials=5, multivariate=True
+        ),
     )
     study.optimize(objective, n_trials=args.n_trials)
 
